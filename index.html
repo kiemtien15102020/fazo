@@ -36,10 +36,14 @@
             
             <section id="tab-newsfeed" class="tab-content">
                 <div class="card create-post">
-                    <h3>Đăng bài viết mới</h3>
-                    <textarea id="post-content" placeholder="Hôm nay bạn muốn chia sẻ điều gì với đồng nghiệp..."></textarea>
-                    <button onclick="createNewPost()">Đăng bài</button>
-                </div>
+    <h3>Đăng bài viết mới</h3>
+    <textarea id="post-content" placeholder="Hôm nay bạn muốn chia sẻ điều gì với đồng nghiệp..."></textarea>
+    <!-- Bổ sung thêm nút chọn ảnh dưới đây -->
+    <div class="post-actions-input" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+        <input type="file" id="post-image-input" accept="image/*">
+        <button onclick="createNewPost()">Đăng bài</button>
+    </div>
+</div>
                 <div id="newsfeed-list"></div>
             </section>
 

@@ -2,11 +2,8 @@
 const SUPABASE_URL = "https://nbciwifubobjohwmdjwg.supabase.co"; 
 const SUPABASE_ANON_KEY = "sb_publishable_-a4LSSVo-va31CIo7P5z4A_rMbL1tNj";
 
-// Trích xuất hàm createClient từ đối tượng thư viện toàn cục của CDN
-const { createClient } = supabase; 
-
-// Khởi tạo kết nối bằng biến spClient để đồng bộ với toàn bộ code xử lý phía dưới
-const spClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Khởi tạo kết nối an toàn bằng biến riêng biệt spClient từ đối tượng global của CDN
+const spClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
 // KHỞI CHẠY KIỂM TRA ĐĂNG NHẬP
@@ -34,7 +31,12 @@ async function loginWithEmail() {
 }
 
 async function loginWithGoogle() {
-    const { error } = await spClient.auth.signInWithOAuth({ provider: 'google' });
+    const { error } = await spClient.auth.signInWithOAuth({ 
+        provider: 'google',
+        options: {
+            redirectTo: window.location.origin + window.location.pathname
+        }
+    });
     if (error) alert("Lỗi kết nối Google: " + error.message);
 }
 
@@ -88,7 +90,7 @@ async function loadNewsfeed() {
         postCard.className = 'card post-card';
         postCard.innerHTML = `
             <div class="post-header">
-                <img src="${post.profiles?.avatar_url || 'https://via.placeholder.com/150'}">
+                <img src="${post.profiles?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80'}">
                 <div class="post-meta">
                     <h4>${post.profiles?.full_name || 'Đồng nghiệp'}</h4>
                     <span>${new Date(post.created_at).toLocaleString('vi-VN')}</span>
@@ -190,7 +192,7 @@ async function recallMessage(msgId) {
 async function loadProfileData() {
     const { data: prof } = await spClient.from('profiles').select('*').eq('id', currentUser.id).single();
     if(prof) {
-        document.getElementById('prof-avatar').src = prof.avatar_url || 'https://via.placeholder.com/150';
+        document.getElementById('prof-avatar').src = prof.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80';
         document.getElementById('prof-name').innerText = prof.full_name;
         document.getElementById('prof-status-input').value = prof.status || '';
         document.getElementById('prof-bio-input').value = prof.bio || '';

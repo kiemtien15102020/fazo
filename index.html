@@ -3,82 +3,269 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FAZO - Mạng xã hội nội bộ</title>
-    <link rel="stylesheet" href="style.css">
+    <title>FAZO - Mạng Xã Hội Nội Bộ</title>
+    <!-- Nhúng thư viện Supabase CDN v2 -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --bg-color: #f4f6f9;
+            --card-color: #ffffff;
+            --text-color: #333333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        .hidden { display: none !important; }
+
+        /* Giao diện Đăng nhập */
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 30px;
+            background: var(--card-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .login-container input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-google { background-color: #fff; color: #555; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; gap: 10px; }
+
+        /* Layout Ứng dụng chính */
+        .app-layout {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            min-height: 100vh;
+        }
+
+        /* Sidebar bên trái */
+        .sidebar {
+            background-color: #1e293b;
+            color: white;
+            padding: 20px;
+        }
+        .sidebar h2 { text-align: center; margin-bottom: 30px; }
+        .menu-item {
+            padding: 12px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            transition: background 0.2s;
+        }
+        .menu-item:hover { background-color: #334155; }
+
+        /* Vùng nội dung bên phải */
+        .main-content {
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Card chung */
+        .card {
+            background: var(--card-color);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+
+        /* Khung tạo bài viết */
+        .create-post textarea {
+            width: 100%;
+            height: 80px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            resize: none;
+            box-sizing: border-box;
+        }
+
+        /* Bài viết hiển thị */
+        .post-card { border: 1px solid #e2e8f0; }
+        .post-header img { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; }
+        .comment-item {
+            background: #f1f5f9;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 6px;
+            font-size: 14px;
+        }
+
+        /* Khung Chat */
+        .chat-messages {
+            background: #f8fafc;
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 15px;
+        }
+        .msg-row { margin-bottom: 12px; }
+        .msg-row.mine { text-align: right; }
+        .msg-bubble {
+            display: inline-block;
+            background: #e2e8f0;
+            padding: 8px 14px;
+            border-radius: 12px;
+            max-width: 70%;
+            text-align: left;
+        }
+        .mine .msg-bubble { background-color: #dbeafe; color: #1e40af; }
+        .msg-user { font-size: 11px; color: #64748b; margin-bottom: 2px; }
+        .msg-actions { font-size: 11px; color: var(--danger-color); cursor: pointer; margin-left: 8px; }
+
+        /* Profile input fields */
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    </style>
 </head>
 <body>
 
-    <div id="login-page" class="auth-container">
-        <div class="auth-card">
-            <h2>FAZO LOGIN</h2>
-            <p>Diễn đàn trao đổi nội bộ doanh nghiệp</p>
-            <input type="email" id="login-email" placeholder="Email nhân viên">
-            <input type="password" id="login-password" placeholder="Mật khẩu">
-            <button onclick="loginWithEmail()">Đăng nhập</button>
-            <div class="divider">HOẶC</div>
-            <button onclick="loginWithGoogle()" class="btn-google">Đăng nhập với Google</button>
+    <!-- ==================== GIAO DIỆN ĐĂNG NHẬP ==================== -->
+    <div id="login-page" class="login-container">
+        <h2>Chào mừng tới FAZO</h2>
+        <p>Hệ thống kết nối và truyền thông nội bộ</p>
+        <input type="email" id="login-email" placeholder="Email nhân viên">
+        <input type="password" id="login-password" placeholder="Mật khẩu">
+        <button class="btn btn-primary" onclick="loginWithEmail()">Đăng nhập</button>
+        <div style="margin: 20px 0; color: #aaa;">HOẶC</div>
+        <button class="btn btn-google" onclick="loginWithGoogle()">
+            <img src="https://docs.id.vin/assets/images/google-logo.png" width="18" alt="Google"> Đăng nhập bằng Google
+        </button>
+    </div>
+
+    <!-- ==================== GIAO DIỆN CHÍNH (SAU KHI ĐĂNG NHẬP) ==================== -->
+    <div id="app-page" class="app-layout hidden">
+        
+        <!-- SIDEBAR MENU -->
+        <div class="sidebar">
+            <h2>FAZO Workspace</h2>
+            <div class="menu-item" onclick="switchTab('newsfeed')">📰 Bảng tin công ty</div>
+            <div class="menu-item" onclick="switchTab('chat-general')">💬 Chat tổng toàn văn phòng</div>
+            <div class="menu-item" onclick="switchTab('profile')">👤 Trang cá nhân của tôi</div>
+            <div class="menu-item" onclick="logout()" style="color: #fca5a5; margin-top: 50px;">🚪 Đăng xuất</div>
+        </div>
+
+        <!-- VÙNG HIỂN THỊ NỘI DUNG CHÍNH -->
+        <div class="main-content">
+            
+            <!-- TAB 1: BẢNG TIN CHUNG -->
+            <div id="tab-newsfeed" class="tab-content">
+                <div class="card create-post">
+                    <h3>Đăng bài viết mới</h3>
+                    <textarea id="post-content" placeholder="Hôm nay bạn muốn chia sẻ điều gì với đồng nghiệp..."></textarea>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                        <input type="file" id="post-image-input" accept="image/*">
+                        <button class="btn btn-primary" onclick="createNewPost()" style="width: auto; padding: 8px 20px; margin: 0;">Đăng bài</button>
+                    </div>
+                </div>
+                
+                <!-- Cơ chế kiểm soát tải trang thủ công: Chống lag cực tốt -->
+                <div style="margin: 15px 0; text-align: right;">
+                    <button onclick="loadNewsfeed()" style="background-color: var(--primary-color); color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: 500;">🔄 Làm mới bảng tin</button>
+                </div>
+                
+                <div id="newsfeed-list"></div>
+            </div>
+
+            <!-- TAB 2: CHAT TỔNG REALTIME TOÀN CÔNG TY -->
+            <div id="tab-chat-general" class="tab-content hidden">
+                <div class="card">
+                    <h3>Phòng chat chung văn phòng</h3>
+                    <div id="chat-messages" class="chat-messages"></div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <input type="text" id="chat-input" placeholder="Nhập tin nhắn..." style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+                        <button class="btn btn-primary" onclick="sendChatMessage()" style="width: auto; margin: 0; padding: 0 25px;">Gửi</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: TRANG CÁ NHÂN CHÍNH CHỦ -->
+            <div id="tab-profile" class="tab-content hidden">
+                <div class="card" style="text-align: center;">
+                    <img id="prof-avatar" src="" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd;">
+                    <h2 id="prof-name" style="margin: 10px 0 5px 0;">Họ và Tên</h2>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 25px;">Tài khoản chính chủ</p>
+                    
+                    <div style="text-align: left; max-width: 500px; margin: 0 auto;">
+                        <div class="form-group">
+                            <label>Trạng thái công việc (Status):</label>
+                            <input type="text" id="prof-status-input" placeholder="Ví dụ: Đang làm việc từ xa, Đang họp...">
+                        </div>
+                        <div class="form-group">
+                            <label>Giới thiệu bản thân (Bio):</label>
+                            <textarea id="prof-bio-input" rows="3" placeholder="Viết vài điều giới thiệu bản thân..."></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="updateProfile()">Lưu thay đổi</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB NÂNG CAO 4: GHÉ THĂM TƯỜNG CÁ NHÂN ĐỒNG NGHIỆP -->
+            <div id="tab-view-profile" class="tab-content hidden">
+                <div class="card" style="text-align: center;">
+                    <img id="view-prof-avatar" src="" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd;">
+                    <h2 id="view-prof-name" style="margin: 10px 0 5px 0;">Đồng nghiệp</h2>
+                    <p id="view-prof-status" style="font-style: italic; color: #28a745; font-weight: 500;"></p>
+                    <p id="view-prof-bio" style="color: #555; max-width: 500px; margin: 10px auto 20px auto;"></p>
+                    
+                    <div style="display: flex; justify-content: center; gap: 15px;">
+                        <button id="btn-follow" onclick="toggleFollow()" style="border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer;"></button>
+                        <button id="btn-open-dm" onclick="openDirectMessage()" style="background-color: var(--success-color); color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer;">💬 Nhắn tin riêng</button>
+                    </div>
+                </div>
+                <h3 style="margin: 25px 0 15px 0; border-left: 4px solid var(--primary-color); padding-left: 10px;">Các bài đăng của người này</h3>
+                <div id="user-posts-list"></div>
+            </div>
+
+            <!-- TAB NÂNG CAO 5: KHUNG CHAT RIÊNG MẬT (DIRECT MESSAGE) -->
+            <div id="tab-dm-chat" class="tab-content hidden">
+                <div class="card">
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">
+                        <h3 id="dm-target-name" style="margin: 0; color: #333;">Đang kết nối...</h3>
+                        <button onclick="switchTab('newsfeed')" style="background: #64748b; color: white; border: none; padding: 5px 12px; border-radius: 4px; cursor: pointer;">⬅️ Thoát chat</button>
+                    </div>
+                    <div id="dm-messages" class="chat-messages" style="height: 350px;"></div>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="dm-input" placeholder="Nhập tin nhắn bảo mật..." style="flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+                        <button class="btn btn-primary" onclick="sendPrivateMessage()" style="width: auto; margin: 0; padding: 0 25px; background-color: var(--success-color);">Gửi đi</button>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
-    <div id="app-page" class="main-container hidden">
-        <header class="navbar">
-            <div class="logo">FAZO INTERNAL</div>
-            <nav>
-                <button onclick="switchTab('newsfeed')">📰 Bảng tin</button>
-                <button onclick="switchTab('chat')">💬 Phòng Chat Tổng</button>
-                <button onclick="switchTab('profile')">👤 Trang cá nhân</button>
-                <button onclick="logout()" class="btn-logout">Đăng xuất</button>
-            </nav>
-        </header>
-
-        <main class="content-area">
-            
-            <section id="tab-newsfeed" class="tab-content">
-                <div class="card create-post">
-    <h3>Đăng bài viết mới</h3>
-    <textarea id="post-content" placeholder="Hôm nay bạn muốn chia sẻ điều gì với đồng nghiệp..."></textarea>
-    <!-- Bổ sung thêm nút chọn ảnh dưới đây -->
-    <div class="post-actions-input" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-        <input type="file" id="post-image-input" accept="image/*">
-        <button onclick="createNewPost()">Đăng bài</button>
-    </div>
-</div>
-                <div id="newsfeed-list"></div>
-            </section>
-
-            <section id="tab-chat" class="tab-content hidden">
-                <div class="chat-box card">
-                    <h3>Phòng Chat Nội Bộ Toàn Công Ty</h3>
-                    <div id="chat-messages" class="chat-messages-area"></div>
-                    <div class="chat-input-group">
-                        <input type="text" id="chat-input" placeholder="Nhập tin nhắn..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
-                        <button onclick="sendChatMessage()">Gửi</button>
-                    </div>
-                </div>
-            </section>
-
-            <section id="tab-profile" class="tab-content hidden">
-                <div class="card profile-card">
-                    <div class="profile-header">
-                        <!-- <img id="prof-avatar" src="https://via.placeholder.com/150" alt="Avatar"> -->
-                        <h2 id="prof-name">Tên nhân viên</h2>
-                        <div class="status-group">
-                            <label>Trạng thái công việc:</label>
-                            <input type="text" id="prof-status-input">
-                        </div>
-                    </div>
-                    <div class="profile-body">
-                        <label>Giới thiệu bản thân:</label>
-                        <textarea id="prof-bio-input" placeholder="Viết vài dòng giới thiệu về phòng ban, chuyên môn..."></textarea>
-                        <button onclick="updateProfile()">Cập nhật thông tin</button>
-                    </div>
-                </div>
-            </section>
-
-        </main>
-    </div>
-
+    <!-- Nhúng logic JavaScript của ứng dụng -->
     <script src="app.js"></script>
 </body>
 </html>

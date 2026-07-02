@@ -140,12 +140,12 @@ function listenRealtimeChat() {
     // Tải trước tin nhắn cũ
     loadChatMessages();
 
-    // Lắng nghe realtime sự kiện chèn dòng mới vào bảng messages
+    // Loại bỏ channel cũ nếu có để tránh lặp bộ nhớ
+    supabase.channel('public:messages').unsubscribe();
+
+    // Lắng nghe realtime sự kiện chèn dòng mới hoặc cập nhật vào bảng messages
     supabase.channel('public:messages')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        loadChatMessages();
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, payload => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {
         loadChatMessages();
     })
     .subscribe();

@@ -2,7 +2,7 @@
 const SUPABASE_URL = "https://nbciwifubobjohwmdjwg.supabase.co"; 
 const SUPABASE_ANON_KEY = "sb_publishable_-a4LSSVo-va31CIo7P5z4A_rMbL1tNj";
 
-// Khởi tạo kết nối an toàn bằng biến riêng biệt spClient từ đối tượng global của CDN
+// Khởi tạo kết nối an toàn bằng biến riêng biệt spClient từ đối tượng global của CDNpost.profiles
 const spClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 

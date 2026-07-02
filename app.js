@@ -193,7 +193,7 @@ async function recallMessage(msgId) {
 async function loadProfileData() {
     const { data: prof } = await spClient.from('profiles').select('*').eq('id', currentUser.id).single();
     if(prof) {
-        document.getElementById('prof-avatar').src = prof.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80';
+        // document.getElementById('prof-avatar').src = prof.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80';
         document.getElementById('prof-name').innerText = prof.full_name;
         document.getElementById('prof-status-input').value = prof.status || '';
         document.getElementById('prof-bio-input').value = prof.bio || '';

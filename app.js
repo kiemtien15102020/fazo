@@ -4,8 +4,9 @@ const SUPABASE_ANON_KEY = "sb_publishable_-a4LSSVo-va31CIo7P5z4A_rMbL1tNj";
 
 const spClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
-let selectedUserId = null; // ID của người dùng đang được ghé thăm tường hoặc đang chat riêng
+let selectedUserId = null; // ID của người dùng đang được ghé thăm hoặc chat riêng
 let dmSubscription = null;
+let globalUnreadStore = {}; // Lưu trữ số tin nhắn chưa đọc từ mỗi user {userId: count}
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80';
 
@@ -15,9 +16,10 @@ spClient.auth.onAuthStateChange((event, session) => {
         currentUser = session.user;
         document.getElementById('login-page').classList.add('hidden');
         document.getElementById('app-page').classList.remove('hidden');
-        loadNewsfeed(); // Chỉ tự động load duy nhất 1 lần khi mở app thành công
+        loadNewsfeed(); 
         loadProfileData();
         listenRealtimeChat(); 
+        listenGlobalPrivateMessages(); // Bắt đầu lắng nghe thông báo tin nhắn riêng đến
     } else {
         currentUser = null;
         document.getElementById('login-page').classList.remove('hidden');
@@ -45,24 +47,21 @@ async function logout() {
     await spClient.auth.signOut();
 }
 
-// ĐIỀU HƯỚNG TAB CHUẨN (CHỈ LOAD KHI BẤM NÚT MENU THỦ CÔNG)
 function switchTab(tabName) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
     const targetTab = document.getElementById(`tab-${tabName}`);
     if (targetTab) targetTab.classList.remove('hidden');
     
-    // Ngắt realtime chat riêng nếu rời khỏi phòng chat riêng
     if (tabName !== 'dm-chat' && dmSubscription) {
         dmSubscription.unsubscribe();
         dmSubscription = null;
     }
 
-    // Chỉ load dữ liệu khi người dùng chủ động click menu tương ứng
     if (tabName === 'newsfeed') loadNewsfeed();
     if (tabName === 'profile') loadProfileData();
 }
 
-// MODULE 1: BẢNG TIN & ĐĂNG ẢNH CHUẨN XÁC
+// MODULE 1: BẢNG TIN & ĐĂNG BÀI
 async function createNewPost() {
     const content = document.getElementById('post-content').value;
     const imageInput = document.getElementById('post-image-input');
@@ -71,36 +70,24 @@ async function createNewPost() {
     if(!content.trim() && !imageFile) return alert("Vui lòng nhập chữ hoặc chọn một bức ảnh!");
 
     let imageUrl = null;
-
     if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${currentUser.id}_${Date.now()}.${fileExt}`;
-        
-        // Đẩy ảnh lên Storage
-        const { error: uploadError } = await spClient.storage
-            .from('post-images')
-            .upload(fileName, imageFile);
-
+        const { error: uploadError } = await spClient.storage.from('post-images').upload(fileName, imageFile);
         if (uploadError) return alert("Không tải được ảnh: " + uploadError.message);
-
-        // Lấy link Public chuẩn
         const { data } = spClient.storage.from('post-images').getPublicUrl(fileName);
         imageUrl = data.publicUrl;
     }
 
-    const { error } = await spClient.from('posts').insert([
-        { user_id: currentUser.id, content: content, image_url: imageUrl }
-    ]);
-
+    const { error } = await spClient.from('posts').insert([{ user_id: currentUser.id, content: content, image_url: imageUrl }]);
     if (error) alert(error.message);
     else {
         document.getElementById('post-content').value = '';
         imageInput.value = '';
-        loadNewsfeed(); // Tự động cập nhật bảng tin ngay khi đăng bài thành công
+        loadNewsfeed(); 
     }
 }
 
-// HÀM CHUNG ĐỂ HIỂN THỊ DANH SÁCH BÀI VIẾT (DÙNG CHUNG CHO BẢNG TIN VÀ TƯỜNG CÁ NHÂN)
 function renderPostList(posts, containerId) {
     const container = document.getElementById(containerId);
     container.innerHTML = '';
@@ -119,8 +106,11 @@ function renderPostList(posts, containerId) {
             });
         }
 
-        // Tạo thẻ hiển thị hình ảnh nếu có image_url
-        let imageHtml = post.image_url ? `<div style="margin-top:12px; text-align:center;"><img src="${post.image_url}" style="max-width:100%; border-radius:8px; max-height:350px; object-fit:contain; border: 1px solid #eee;"></div>` : '';
+        let imageHtml = post.image_url ? `<div style="margin-top:12px; text-align:center;"><img src="${post.image_url}" style="max-width:100%; border-radius:8px; max-height:350px; object-fit:contain;"></div>` : '';
+        
+        // Tích hợp hiện số tin nhắn chưa đọc cạnh tên user nếu có
+        const unreadCount = globalUnreadStore[post.user_id] || 0;
+        const badgeHtml = unreadCount > 0 ? `<span style="background:red; color:white; border-radius:10px; padding:2px 6px; font-size:11px; margin-left:5px; font-weight:bold;">${unreadCount} tin nhắn mới</span>` : '';
 
         const postCard = document.createElement('div');
         postCard.className = 'card post-card';
@@ -128,7 +118,7 @@ function renderPostList(posts, containerId) {
             <div class="post-header" style="display:flex; gap:10px; align-items:center; cursor:pointer;" onclick="visitUserProfile('${post.user_id}')">
                 <img src="${post.profiles?.avatar_url || DEFAULT_AVATAR}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
                 <div class="post-meta">
-                    <h4 style="margin:0; color:#007bff;">${post.profiles?.full_name || 'Đồng nghiệp'}</h4>
+                    <h4 style="margin:0; color:#007bff;">${post.profiles?.full_name || 'Đồng nghiệp'} ${badgeHtml}</h4>
                     <span style="font-size:12px; color:#999;">${new Date(post.created_at).toLocaleString('vi-VN')}</span>
                 </div>
             </div>
@@ -137,14 +127,14 @@ function renderPostList(posts, containerId) {
                 ${imageHtml}
             </div>
             <div class="post-actions" style="margin-top:15px; display:flex; gap:10px;">
-                <button onclick="likePost('${post.id}')" style="padding:5px 10px;">❤️ Thích (${likeCount})</button>
-                <button onclick="deletePost('${post.id}', '${post.user_id}')" style="padding:5px 10px;">🗑️ Xóa</button>
+                <button onclick="likePost('${post.id}')">❤️ Thích (${likeCount})</button>
+                <button onclick="deletePost('${post.id}', '${post.user_id}')">🗑️ Xóa</button>
             </div>
             <div class="comment-section" style="margin-top:15px; background:#f9f9f9; padding:10px; border-radius:5px;">
                 <div class="comments-list">${commentHtml}</div>
                 <div class="comment-input-group" style="display:flex; gap:5px; margin-top:10px;">
-                    <input type="text" id="input-cmt-${post.id}" placeholder="Viết bình luận..." style="flex:1; padding:5px;">
-                    <button onclick="sendComment('${post.id}')" style="padding:5px 10px;">Gửi</button>
+                    <input type="text" id="input-cmt-${post.id}" placeholder="Viết bình luận..." style="flex:1;">
+                    <button onclick="sendComment('${post.id}')">Gửi</button>
                 </div>
             </div>
         `;
@@ -153,7 +143,6 @@ function renderPostList(posts, containerId) {
 }
 
 async function loadNewsfeed() {
-    // Kỹ thuật gộp luồng: lấy bài viết kèm ảnh, avatar, comment chỉ trong 1 request giúp chống lag
     const { data: posts, error } = await spClient
         .from('posts')
         .select(`id, content, created_at, user_id, image_url, profiles(full_name, avatar_url), comments(id, content, user_id, profiles(full_name)), likes(user_id)`)
@@ -183,7 +172,7 @@ async function sendComment(postId) {
     loadNewsfeed();
 }
 
-// MODULE 2: GHÉ THĂM TƯỜNG CÁ NHÂN NGƯỜI KHÁC & FOLLOW
+// MODULE 2: XEM TƯỜNG ĐỒNG NGHIỆP
 async function visitUserProfile(userId) {
     if(userId === currentUser.id) {
         switchTab('profile');
@@ -192,29 +181,28 @@ async function visitUserProfile(userId) {
     selectedUserId = userId;
     switchTab('view-profile');
 
-    // 1. Lấy thông tin cá nhân của người đó
     const { data: prof } = await spClient.from('profiles').select('*').eq('id', userId).single();
     if(prof) {
+        // Cập nhật số tin nhắn ngay cạnh tên trên tường nhà nếu có
+        const unreadCount = globalUnreadStore[userId] || 0;
+        const badgeTxt = unreadCount > 0 ? ` (${unreadCount} tin nhắn chưa đọc)` : '';
+        
         document.getElementById('view-prof-avatar').src = prof.avatar_url || DEFAULT_AVATAR;
-        document.getElementById('view-prof-name').innerText = prof.full_name || 'Đồng nghiệp';
+        document.getElementById('view-prof-name').innerText = (prof.full_name || 'Đồng nghiệp') + badgeTxt;
         document.getElementById('view-prof-status').innerText = prof.status ? `Status: ${prof.status}` : '';
         document.getElementById('view-prof-bio').innerText = prof.bio || 'Chưa viết tiểu sử.';
     }
 
-    // 2. Kiểm tra trạng thái đã Follow hay chưa để đổi chữ trên nút bấm
     const { data: followCheck } = await spClient.from('follows').select('*').eq('follower_id', currentUser.id).eq('following_id', userId);
     const btnFollow = document.getElementById('btn-follow');
     if (followCheck && followCheck.length > 0) {
         btnFollow.innerText = "🔕 Hủy Theo Dõi";
         btnFollow.style.backgroundColor = "#dc3545";
-        btnFollow.style.color = "white";
     } else {
         btnFollow.innerText = "🔔 Theo Dõi";
         btnFollow.style.backgroundColor = "#007bff";
-        btnFollow.style.color = "white";
     }
 
-    // 3. Tải riêng các bài viết do người này đăng
     const { data: userPosts } = await spClient
         .from('posts')
         .select(`id, content, created_at, user_id, image_url, profiles(full_name, avatar_url), comments(id, content, user_id, profiles(full_name)), likes(user_id)`)
@@ -231,49 +219,65 @@ async function toggleFollow() {
     } else {
         await spClient.from('follows').delete().eq('follower_id', currentUser.id).eq('following_id', selectedUserId);
     }
-    visitUserProfile(selectedUserId); // Khởi tạo lại trạng thái giao diện tường nhà
+    visitUserProfile(selectedUserId);
 }
 
-// MODULE 3: CHAT RIÊNG BIỆT 1 - 1 (DIRECT MESSAGE)
+// MODULE 3: CƠ CHẾ CHAT RIÊNG 1-1 HOÀN CHỈNH & ĐỒNG BỘ THÔNG BÁO
 async function openDirectMessage() {
     switchTab('dm-chat');
+    
+    // Khi mở khung chat, xóa bỏ trạng thái tin nhắn chưa đọc từ người này
+    globalUnreadStore[selectedUserId] = 0;
+    
     const { data: prof } = await spClient.from('profiles').select('full_name').eq('id', selectedUserId).single();
     document.getElementById('dm-target-name').innerText = `🔒 Chat riêng với: ${prof?.full_name || 'Đồng nghiệp'}`;
     
-    loadPrivateMessages();
+    await loadPrivateMessages();
 
-    // Thiết lập cổng lắng nghe Realtime riêng biệt cho 2 người, không ảnh hưởng chat tổng toàn công ty
-    dmSubscription = spClient.channel(`room:${currentUser.id}-${selectedUserId}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, payload => {
-        loadPrivateMessages();
+    // Thiết lập Realtime riêng cho phòng chat này
+    if(dmSubscription) dmSubscription.unsubscribe();
+    
+    dmSubscription = spClient.channel(`private-room-${selectedUserId}`)
+    .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'private_messages' 
+    }, payload => {
+        const newMsg = payload.new;
+        // Nếu tin nhắn thuộc cuộc hội thoại hiện tại, cập nhật ngay màn hình chat
+        if ((newMsg.sender_id === selectedUserId && newMsg.receiver_id === currentUser.id) ||
+            (newMsg.sender_id === currentUser.id && newMsg.receiver_id === selectedUserId)) {
+            loadPrivateMessages();
+        }
     })
     .subscribe();
 }
 
 async function loadPrivateMessages() {
-    // Lấy tin nhắn giữa người A gửi người B hoặc người B gửi người A
-    const { data: messages } = await spClient
+    // Sử dụng bộ lọc chuẩn hóa mượt mà của Supabase nhằm gộp luồng tin nhắn 2 chiều công khai
+    const { data: messages, error } = await spClient
         .from('private_messages')
         .select('*')
         .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedUserId}),and(sender_id.eq.${selectedUserId},receiver_id.eq.${currentUser.id})`)
         .order('created_at', { ascending: true });
 
+    if (error) return;
+
     const chatBox = document.getElementById('dm-messages');
     chatBox.innerHTML = '';
 
-    if(messages) {
-        messages.forEach(m => {
-            const isMine = m.sender_id === currentUser.id;
-            const bubble = document.createElement('div');
-            bubble.style.textAlign = isMine ? 'right' : 'left';
-            bubble.innerHTML = `
-                <div style="display:inline-block; background:${isMine ? '#d4edda' : '#eee'}; padding:8px 12px; margin:5px; border-radius:10px; max-width:70%;">
-                    ${m.content}
-                </div>
-            `;
-            chatBox.appendChild(bubble);
-        });
-    }
+    messages.forEach(m => {
+        const isMine = m.sender_id === currentUser.id;
+        const bubbleRow = document.createElement('div');
+        bubbleRow.style.textAlign = isMine ? 'right' : 'left';
+        bubbleRow.style.marginBottom = '8px';
+        bubbleRow.innerHTML = `
+            <div style="display:inline-block; background:${isMine ? '#dbeafe' : '#f1f5f9'}; color:${isMine ? '#1e40af' : '#333'}; padding:8px 14px; border-radius:12px; max-width:70%; word-break: break-word;">
+                ${m.content}
+            </div>
+        `;
+        chatBox.appendChild(bubbleRow);
+    });
     chatBox.scrollTop = chatBox.scrollHeight;
 }
 
@@ -281,14 +285,46 @@ async function sendPrivateMessage() {
     const input = document.getElementById('dm-input');
     if(!input.value.trim()) return;
 
-    await spClient.from('private_messages').insert([
-        { sender_id: currentUser.id, receiver_id: selectedUserId, content: input.value }
+    const { error } = await spClient.from('private_messages').insert([
+        { sender_id: currentUser.id, receiver_id: selectedUserId, content: input.value.trim() }
     ]);
+    
+    if (error) alert("Không gửi được tin: " + error.message);
     input.value = '';
     loadPrivateMessages();
 }
 
-// MODULE 4: PHÒNG CHAT CHUNG REALTIME TOÀN CÔNG TY
+// HÀM LẮNG NGHE TOÀN CỤC: Đếm và hiện thông báo tin nhắn chưa đọc kế bên tên user
+function listenGlobalPrivateMessages() {
+    spClient.channel('global-private-watcher')
+    .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'private_messages',
+        filter: `receiver_id=eq.${currentUser.id}` // Chỉ theo dõi tin nhắn gửi đến mình
+    }, payload => {
+        const incomingMsg = payload.new;
+        
+        // Nếu mình đang KHÔNG ở trong phòng chat với người gửi, tăng thông báo lên
+        const isCurrentlyChatting = (document.getElementById('tab-dm-chat').classList.contains('hidden') === false) && (selectedUserId === incomingMsg.sender_id);
+        
+        if (!isCurrentlyChatting) {
+            globalUnreadStore[incomingMsg.sender_id] = (globalUnreadStore[incomingMsg.sender_id] || 0) + 1;
+            
+            // Kích hoạt load lại bảng tin để cập nhật số Badge cạnh tên
+            if (!document.getElementById('tab-newsfeed').classList.contains('hidden')) {
+                loadNewsfeed();
+            }
+            // Nếu đang xem tường người đó, cập nhật ngay
+            if (!document.getElementById('tab-view-profile').classList.contains('hidden') && selectedUserId === incomingMsg.sender_id) {
+                visitUserProfile(selectedUserId);
+            }
+        }
+    })
+    .subscribe();
+}
+
+// MODULE 4: CHAT TỔNG TOÀN CÔNG TY
 async function sendChatMessage() {
     const input = document.getElementById('chat-input');
     if(!input.value.trim()) return;
@@ -307,11 +343,7 @@ function listenRealtimeChat() {
 }
 
 async function loadChatMessages() {
-    const { data: msgs } = await spClient
-        .from('messages')
-        .select(`id, content, is_recalled, user_id, profiles(full_name)`)
-        .order('created_at', { ascending: true });
-
+    const { data: msgs } = await spClient.from('messages').select(`id, content, is_recalled, user_id, profiles(full_name)`).order('created_at', { ascending: true });
     if(!msgs) return;
 
     const chatArea = document.getElementById('chat-messages');
@@ -326,7 +358,7 @@ async function loadChatMessages() {
         let actionHtml = (isMine && !m.is_recalled) ? `<span class="msg-actions" onclick="recallMessage('${m.id}')">Thu hồi</span>` : '';
 
         msgRow.innerHTML = `
-            <div class="msg-user">${m.profiles?.full_name || 'Đồng nghiệp'}</div>
+            <div class="msg-user" style="cursor:pointer; color:#007bff;" onclick="visitUserProfile('${m.user_id}')">${m.profiles?.full_name || 'Đồng nghiệp'}</div>
             <div class="msg-bubble">${msgContent}</div>
             ${actionHtml}
         `;

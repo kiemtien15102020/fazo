@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAZO - Mạng xã hội nội bộ</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+    <div id="login-page" class="auth-container">
+        <div class="auth-card">
+            <h2>FAZO LOGIN</h2>
+            <p>Diễn đàn trao đổi nội bộ doanh nghiệp</p>
+            <input type="email" id="login-email" placeholder="Email nhân viên">
+            <input type="password" id="login-password" placeholder="Mật khẩu">
+            <button onclick="loginWithEmail()">Đăng nhập</button>
+            <div class="divider">HOẶC</div>
+            <button onclick="loginWithGoogle()" class="btn-google">Đăng nhập với Google</button>
+        </div>
+    </div>
+
+    <div id="app-page" class="main-container hidden">
+        <header class="navbar">
+            <div class="logo">FAZO INTERNAL</div>
+            <nav>
+                <button onclick="switchTab('newsfeed')">📰 Bảng tin</button>
+                <button onclick="switchTab('chat')">💬 Phòng Chat Tổng</button>
+                <button onclick="switchTab('profile')">👤 Trang cá nhân</button>
+                <button onclick="logout()" class="btn-logout">Đăng xuất</button>
+            </nav>
+        </header>
+
+        <main class="content-area">
+            
+            <section id="tab-newsfeed" class="tab-content">
+                <div class="card create-post">
+                    <h3>Đăng bài viết mới</h3>
+                    <textarea id="post-content" placeholder="Hôm nay bạn muốn chia sẻ điều gì với đồng nghiệp..."></textarea>
+                    <button onclick="createNewPost()">Đăng bài</button>
+                </div>
+                <div id="newsfeed-list"></div>
+            </section>
+
+            <section id="tab-chat" class="tab-content hidden">
+                <div class="chat-box card">
+                    <h3>Phòng Chat Nội Bộ Toàn Công Ty</h3>
+                    <div id="chat-messages" class="chat-messages-area"></div>
+                    <div class="chat-input-group">
+                        <input type="text" id="chat-input" placeholder="Nhập tin nhắn..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
+                        <button onclick="sendChatMessage()">Gửi</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="tab-profile" class="tab-content hidden">
+                <div class="card profile-card">
+                    <div class="profile-header">
+                        <img id="prof-avatar" src="https://via.placeholder.com/150" alt="Avatar">
+                        <h2 id="prof-name">Tên nhân viên</h2>
+                        <div class="status-group">
+                            <label>Trạng thái công việc:</label>
+                            <input type="text" id="prof-status-input">
+                        </div>
+                    </div>
+                    <div class="profile-body">
+                        <label>Giới thiệu bản thân:</label>
+                        <textarea id="prof-bio-input" placeholder="Viết vài dòng giới thiệu về phòng ban, chuyên môn..."></textarea>
+                        <button onclick="updateProfile()">Cập nhật thông tin</button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

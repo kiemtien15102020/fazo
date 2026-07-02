@@ -1,0 +1,113 @@
+:root {
+    --primary-color: #007bff;
+    --bg-color: #f4f6f9;
+    --card-color: #ffffff;
+    --text-color: #333333;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: var(--bg-color);
+    margin: 0;
+    padding: 0;
+    color: var(--text-color);
+}
+
+.hidden { display: none !important; }
+
+/* AUTH PAGE */
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+.auth-card {
+    background: var(--card-color);
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    text-align: center;
+    width: 100%;
+    max-width: 400px;
+}
+.auth-card input {
+    width: 90%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.auth-card button {
+    width: 96%;
+    padding: 10px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.divider { margin: 15px 0; font-size: 12px; color: #888; }
+.btn-google { background-color: #db4437 !important; }
+
+/* MAIN APP & NAVBAR */
+.navbar {
+    background: var(--primary-color);
+    color: white;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.navbar nav button {
+    background: transparent;
+    color: white;
+    border: 1px solid white;
+    padding: 8px 15px;
+    margin-left: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.navbar nav button:hover { background: rgba(255,255,255,0.2); }
+.btn-logout { background: #dc3545 !important; border: none !important; }
+
+.content-area { max-width: 800px; margin: 30px auto; padding: 0 15px; }
+.card { background: var(--card-color); padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 20px; }
+
+/* NEWSFEED */
+.create-post textarea { width: 97%; height: 80px; padding: 10px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #ddd; }
+.create-post button { background: var(--primary-color); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; float: right; }
+
+.post-card { position: relative; }
+.post-header { display: flex; align-items: center; margin-bottom: 15px; }
+.post-header img, .comment-item img { width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; }
+.post-meta h4 { margin: 0; }
+.post-meta span { font-size: 11px; color: #777; }
+.post-actions { margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; }
+.post-actions button { background: none; border: none; color: #555; margin-right: 15px; cursor: pointer; font-weight: bold; }
+.post-actions button:hover { color: var(--primary-color); }
+
+.comment-section { margin-top: 15px; background: #f8f9fa; padding: 10px; border-radius: 6px; }
+.comment-item { display: flex; align-items: flex-start; margin-bottom: 10px; font-size: 13px; }
+.comment-input-group { display: flex; margin-top: 10px; }
+.comment-input-group input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+.comment-input-group button { background: var(--primary-color); color: white; border: none; padding: 0 15px; border-radius: 4px; margin-left: 5px; }
+
+/* CHAT AREA */
+.chat-messages-area { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; background: #fafafa; display: flex; flex-direction: column; }
+.msg-row { margin-bottom: 10px; display: flex; flex-direction: column; }
+.msg-user { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 20px; }
+.msg-bubble { background: #e9ecef; padding: 8px 12px; border-radius: 12px; max-width: 70%; width: fit-content; position: relative; }
+.msg-row.mine { align-items: flex-end; }
+.msg-row.mine .msg-bubble { background: #d2e3fc; }
+.msg-actions { font-size: 10px; color: #dc3545; cursor: pointer; margin-top: 2px; }
+.chat-input-group { display: flex; }
+.chat-input-group input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+.chat-input-group button { background: var(--primary-color); color: white; border: none; padding: 0 20px; margin-left: 5px; border-radius: 4px; }
+
+/* PROFILE */
+.profile-header { text-align: center; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+.profile-header img { width: 100px; height: 100px; border-radius: 50%; }
+.status-group, .profile-body { margin-top: 20px; display: flex; flex-direction: column; }
+.profile-body textarea { height: 100px; margin: 10px 0; padding: 10px; }
+.profile-body button { background: #28a745; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; }

@@ -35,7 +35,7 @@ async function loginWithGoogle() {
 }
 
 async function logout() {
-    await supabase.auth.signOut();
+    await supabaseClient.auth.signOut(); // <-- Đổi ở đây
 }
 
 // CHUYỂN ĐỔI GIAO DIỆN TAB

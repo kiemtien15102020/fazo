@@ -1,19 +1,19 @@
-// CẤU HÌNH KẾT NỐI SUPABASE
+// CẤU HÌNH KẾT NỐI SUPABASE (Đã đổi tên thành spClient để tránh trùng lặp)
 const SUPABASE_URL = "https://nbciwifubobjohwmdjwg.supabase.co"; 
 const SUPABASE_ANON_KEY = "sb_publishable_-a4LSSVo-va31CIo7P5z4A_rMbL1tNj";
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const spClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
 
 // KHỞI CHẠY KIỂM TRA ĐĂNG NHẬP
-supabase.auth.onAuthStateChange((event, session) => {
+spClient.auth.onAuthStateChange((event, session) => {
     if (session) {
         currentUser = session.user;
         document.getElementById('login-page').classList.add('hidden');
         document.getElementById('app-page').classList.remove('hidden');
         loadNewsfeed();
         loadProfileData();
-        listenRealtimeChat(); // Bật realtime lắng nghe chat
+        listenRealtimeChat(); 
     } else {
         currentUser = null;
         document.getElementById('login-page').classList.remove('hidden');
@@ -25,17 +25,17 @@ supabase.auth.onAuthStateChange((event, session) => {
 async function loginWithEmail() {
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await spClient.auth.signInWithPassword({ email, password });
     if (error) alert("Đăng nhập thất bại: " + error.message);
 }
 
 async function loginWithGoogle() {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+    const { error } = await spClient.auth.signInWithOAuth({ provider: 'google' });
     if (error) alert("Lỗi kết nối Google: " + error.message);
 }
 
 async function logout() {
-    await supabaseClient.auth.signOut(); // <-- Đổi ở đây
+    await spClient.auth.signOut();
 }
 
 // CHUYỂN ĐỔI GIAO DIỆN TAB
@@ -50,7 +50,7 @@ async function createNewPost() {
     const content = document.getElementById('post-content').value;
     if(!content.trim()) return alert("Nội dung không được để trống!");
 
-    const { error } = await supabase.from('posts').insert([{ user_id: currentUser.id, content: content }]);
+    const { error } = await spClient.from('posts').insert([{ user_id: currentUser.id, content: content }]);
     if (error) alert(error.message);
     else {
         document.getElementById('post-content').value = '';
@@ -59,7 +59,7 @@ async function createNewPost() {
 }
 
 async function loadNewsfeed() {
-    const { data: posts, error } = await supabase
+    const { data: posts, error } = await spClient
         .from('posts')
         .select(`id, content, created_at, user_id, profiles(full_name, avatar_url)`)
         .order('created_at', { ascending: false });
@@ -70,15 +70,15 @@ async function loadNewsfeed() {
     feedContainer.innerHTML = '';
 
     for (let post of posts) {
-        // Lấy số lượng Likes cho bài viết
-        const { count: likeCount } = await supabase.from('likes').select('*', { count: 'exact', head: true }).eq('post_id', post.id);
-        // Lấy danh sách Comments
-        const { data: comments } = await supabase.from('comments').select(`id, content, user_id, profiles(full_name)`).eq('post_id', post.id);
+        const { count: likeCount } = await spClient.from('likes').select('*', { count: 'exact', head: true }).eq('post_id', post.id);
+        const { data: comments } = await spClient.from('comments').select(`id, content, user_id, profiles(full_name)`).eq('post_id', post.id);
 
         let commentHtml = '';
-        comments.forEach(c => {
-            commentHtml += `<div class="comment-item"><b>${c.profiles?.full_name || 'Đồng nghiệp'}:</b> ${c.content}</div>`;
-        });
+        if (comments) {
+            comments.forEach(c => {
+                commentHtml += `<div class="comment-item"><b>${c.profiles?.full_name || 'Đồng nghiệp'}:</b> ${c.content}</div>`;
+            });
+        }
 
         const postCard = document.createElement('div');
         postCard.className = 'card post-card';
@@ -108,14 +108,14 @@ async function loadNewsfeed() {
 }
 
 async function likePost(postId) {
-    await supabase.from('likes').insert([{ user_id: currentUser.id, post_id: postId }]);
+    await spClient.from('likes').insert([{ user_id: currentUser.id, post_id: postId }]);
     loadNewsfeed();
 }
 
 async function deletePost(postId, postOwnerId) {
     if(currentUser.id !== postOwnerId) return alert("Bạn không có quyền xóa bài viết của người khác!");
     if(confirm("Bạn chắc chắn muốn xóa bài viết này?")) {
-        await supabase.from('posts').delete().eq('id', postId);
+        await spClient.from('posts').delete().eq('id', postId);
         loadNewsfeed();
     }
 }
@@ -123,7 +123,7 @@ async function deletePost(postId, postOwnerId) {
 async function sendComment(postId) {
     const input = document.getElementById(`input-cmt-${postId}`);
     if(!input.value.trim()) return;
-    await supabase.from('comments').insert([{ post_id: postId, user_id: currentUser.id, content: input.value }]);
+    await spClient.from('comments').insert([{ post_id: postId, user_id: currentUser.id, content: input.value }]);
     input.value = '';
     loadNewsfeed();
 }
@@ -132,19 +132,17 @@ async function sendComment(postId) {
 async function sendChatMessage() {
     const input = document.getElementById('chat-input');
     if(!input.value.trim()) return;
-    await supabase.from('messages').insert([{ user_id: currentUser.id, content: input.value }]);
+    await spClient.from('messages').insert([{ user_id: currentUser.id, content: input.value }]);
     input.value = '';
 }
 
 function listenRealtimeChat() {
-    // Tải trước tin nhắn cũ
     loadChatMessages();
 
-    // Loại bỏ channel cũ nếu có để tránh lặp bộ nhớ
-    supabase.channel('public:messages').unsubscribe();
+    // Hủy đăng ký kênh cũ để tránh trùng lặp
+    spClient.channel('public:messages').unsubscribe();
 
-    // Lắng nghe realtime sự kiện chèn dòng mới hoặc cập nhật vào bảng messages
-    supabase.channel('public:messages')
+    spClient.channel('public:messages')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {
         loadChatMessages();
     })
@@ -152,10 +150,12 @@ function listenRealtimeChat() {
 }
 
 async function loadChatMessages() {
-    const { data: msgs } = await supabase
+    const { data: msgs } = await spClient
         .from('messages')
         .select(`id, content, is_recalled, user_id, profiles(full_name)`)
         .order('created_at', { ascending: true });
+
+    if(!msgs) return;
 
     const chatArea = document.getElementById('chat-messages');
     chatArea.innerHTML = '';
@@ -175,16 +175,16 @@ async function loadChatMessages() {
         `;
         chatArea.appendChild(msgRow);
     });
-    chatArea.scrollTop = chatArea.scrollHeight; // Tự cuộn xuống cuối
+    chatArea.scrollTop = chatArea.scrollHeight;
 }
 
 async function recallMessage(msgId) {
-    await supabase.from('messages').update({ is_recalled: true }).eq('id', msgId);
+    await spClient.from('messages').update({ is_recalled: true }).eq('id', msgId);
 }
 
 // MODULE 3: TRANG CÁ NHÂN
 async function loadProfileData() {
-    const { data: prof } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+    const { data: prof } = await spClient.from('profiles').select('*').eq('id', currentUser.id).single();
     if(prof) {
         document.getElementById('prof-avatar').src = prof.avatar_url || 'https://via.placeholder.com/150';
         document.getElementById('prof-name').innerText = prof.full_name;
@@ -197,6 +197,6 @@ async function updateProfile() {
     const status = document.getElementById('prof-status-input').value;
     const bio = document.getElementById('prof-bio-input').value;
     
-    await supabase.from('profiles').update({ status, bio }).eq('id', currentUser.id);
+    await spClient.from('profiles').update({ status, bio }).eq('id', currentUser.id);
     alert("Cập nhật trang cá nhân thành công!");
 }

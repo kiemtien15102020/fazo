@@ -34,7 +34,8 @@ async function loginWithGoogle() {
     const { error } = await spClient.auth.signInWithOAuth({ 
         provider: 'google',
         options: {
-            redirectTo: window.location.origin + window.location.pathname
+            // Tự động lấy địa chỉ URL hiện tại của trang GitHub Pages để quay về sau khi đăng nhập
+            redirectTo: window.location.origin + window.location.pathname 
         }
     });
     if (error) alert("Lỗi kết nối Google: " + error.message);

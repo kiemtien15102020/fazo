@@ -2,7 +2,6 @@
 const SUPABASE_URL = "https://nbciwifubobjohwmdjwg.supabase.co"; 
 const SUPABASE_ANON_KEY = "sb_publishable_-a4LSSVo-va31CIo7P5z4A_rMbL1tNj";
 
-// Khởi tạo kết nối an toàn bằng biến riêng biệt spClient từ đối tượng global của CDNpost.profiles
 const spClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
@@ -34,7 +33,6 @@ async function loginWithGoogle() {
     const { error } = await spClient.auth.signInWithOAuth({ 
         provider: 'google',
         options: {
-            // Tự động lấy địa chỉ URL hiện tại của trang GitHub Pages để quay về sau khi đăng nhập
             redirectTo: window.location.origin + window.location.pathname 
         }
     });
@@ -52,23 +50,57 @@ function switchTab(tabName) {
     if(tabName === 'newsfeed') loadNewsfeed();
 }
 
-// MODULE 1: NEWSFEED & BÀI VIẾT
+// MODULE 1: NEWSFEED & BÀI VIẾT (ĐÃ TỐI ƯU CHỐNG LAG + THÊM ĐĂNG ẢNH)
 async function createNewPost() {
     const content = document.getElementById('post-content').value;
-    if(!content.trim()) return alert("Nội dung không được để trống!");
+    const imageFile = document.getElementById('post-image-input').files[0];
+    
+    if(!content.trim() && !imageFile) return alert("Nội dung bài viết hoặc hình ảnh không được để trống!");
 
-    const { error } = await spClient.from('posts').insert([{ user_id: currentUser.id, content: content }]);
+    let imageUrl = null;
+
+    // Nếu người dùng có chọn ảnh, tiến hành upload lên Supabase Storage trước
+    if (imageFile) {
+        const fileExt = imageFile.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `${currentUser.id}/${fileName}`;
+
+        const { error: uploadError } = await spClient.storage
+            .from('post-images')
+            .upload(filePath, imageFile);
+
+        if (uploadError) {
+            return alert("Lỗi tải ảnh lên: " + uploadError.message);
+        }
+
+        // Lấy URL công khai của ảnh vừa upload
+        const { data } = spClient.storage.from('post-images').getPublicUrl(filePath);
+        imageUrl = data.publicUrl;
+    }
+
+    // Chèn dữ liệu bài viết vào bảng posts (Lưu ý: Bảng posts của bạn cần có thêm cột image_url kiểu text)
+    const { error } = await spClient.from('posts').insert([
+        { user_id: currentUser.id, content: content, image_url: imageUrl }
+    ]);
+
     if (error) alert(error.message);
     else {
         document.getElementById('post-content').value = '';
+        document.getElementById('post-image-input').value = ''; // Reset input chọn file
         loadNewsfeed();
     }
 }
 
 async function loadNewsfeed() {
+    // KỸ THUẬT GỘP REQUEST: Tải bài viết, thông tin người đăng, danh sách comment và đếm lượt like TRONG CÙNG 1 LẦN GỌI
     const { data: posts, error } = await spClient
         .from('posts')
-        .select(`id, content, created_at, user_id, profiles(full_name, avatar_url)`)
+        .select(`
+            id, content, created_at, user_id, image_url,
+            profiles(full_name, avatar_url),
+            comments(id, content, user_id, profiles(full_name)),
+            likes(user_id)
+        `)
         .order('created_at', { ascending: false });
 
     if (error) return;
@@ -76,16 +108,18 @@ async function loadNewsfeed() {
     const feedContainer = document.getElementById('newsfeed-list');
     feedContainer.innerHTML = '';
 
-    for (let post of posts) {
-        const { count: likeCount } = await spClient.from('likes').select('*', { count: 'exact', head: true }).eq('post_id', post.id);
-        const { data: comments } = await spClient.from('comments').select(`id, content, user_id, profiles(full_name)`).eq('post_id', post.id);
-
+    posts.forEach(post => {
+        const likeCount = post.likes ? post.likes.length : 0;
+        
         let commentHtml = '';
-        if (comments) {
-            comments.forEach(c => {
+        if (post.comments) {
+            post.comments.forEach(c => {
                 commentHtml += `<div class="comment-item"><b>${c.profiles?.full_name || 'Đồng nghiệp'}:</b> ${c.content}</div>`;
             });
         }
+
+        // Kiểm tra xem bài viết có kèm hình ảnh hay không để hiển thị thẻ hiển thị ảnh
+        let imageHtml = post.image_url ? `<div class="post-image" style="margin-top:10px;"><img src="${post.image_url}" style="max-width:100%; border-radius:8px; max-height:400px; object-fit:cover;"></div>` : '';
 
         const postCard = document.createElement('div');
         postCard.className = 'card post-card';
@@ -97,9 +131,12 @@ async function loadNewsfeed() {
                     <span>${new Date(post.created_at).toLocaleString('vi-VN')}</span>
                 </div>
             </div>
-            <div class="post-body"><p>${post.content}</p></div>
+            <div class="post-body">
+                <p>${post.content}</p>
+                ${imageHtml}
+            </div>
             <div class="post-actions">
-                <button onclick="likePost('${post.id}')">❤️ Thích (${likeCount || 0})</button>
+                <button onclick="likePost('${post.id}')">❤️ Thích (${likeCount})</button>
                 <button onclick="deletePost('${post.id}', '${post.user_id}')">🗑️ Xóa bài</button>
             </div>
             <div class="comment-section">
@@ -111,7 +148,7 @@ async function loadNewsfeed() {
             </div>
         `;
         feedContainer.appendChild(postCard);
-    }
+    });
 }
 
 async function likePost(postId) {
@@ -145,10 +182,7 @@ async function sendChatMessage() {
 
 function listenRealtimeChat() {
     loadChatMessages();
-
-    // Hủy đăng ký kênh cũ để tránh trùng lặp bộ nhớ
     spClient.channel('public:messages').unsubscribe();
-
     spClient.channel('public:messages')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {
         loadChatMessages();
@@ -193,7 +227,7 @@ async function recallMessage(msgId) {
 async function loadProfileData() {
     const { data: prof } = await spClient.from('profiles').select('*').eq('id', currentUser.id).single();
     if(prof) {
-        // document.getElementById('prof-avatar').src = prof.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80';
+        document.getElementById('prof-avatar').src = prof.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80';
         document.getElementById('prof-name').innerText = prof.full_name;
         document.getElementById('prof-status-input').value = prof.status || '';
         document.getElementById('prof-bio-input').value = prof.bio || '';

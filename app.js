@@ -4,6 +4,10 @@ const SUPABASE_ANON_KEY = "sb_publishable_-a4LSSVo-va31CIo7P5z4A_rMbL1tNj";
 
 const spClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
+let selectedUserId = null; // ID của người dùng đang được ghé thăm tường hoặc đang chat riêng
+let dmSubscription = null;
+
+const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80';
 
 // KHỞI CHẠY KIỂM TRA ĐĂNG NHẬP
 spClient.auth.onAuthStateChange((event, session) => {
@@ -11,7 +15,7 @@ spClient.auth.onAuthStateChange((event, session) => {
         currentUser = session.user;
         document.getElementById('login-page').classList.add('hidden');
         document.getElementById('app-page').classList.remove('hidden');
-        loadNewsfeed();
+        loadNewsfeed(); // Chỉ tự động load duy nhất 1 lần khi mở app thành công
         loadProfileData();
         listenRealtimeChat(); 
     } else {
@@ -32,9 +36,7 @@ async function loginWithEmail() {
 async function loginWithGoogle() {
     const { error } = await spClient.auth.signInWithOAuth({ 
         provider: 'google',
-        options: {
-            redirectTo: window.location.origin + window.location.pathname 
-        }
+        options: { redirectTo: window.location.origin + window.location.pathname }
     });
     if (error) alert("Lỗi kết nối Google: " + error.message);
 }
@@ -43,42 +45,49 @@ async function logout() {
     await spClient.auth.signOut();
 }
 
-// CHUYỂN ĐỔI GIAO DIỆN TAB
+// ĐIỀU HƯỚNG TAB CHUẨN (CHỈ LOAD KHI BẤM NÚT MENU THỦ CÔNG)
 function switchTab(tabName) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-    document.getElementById(`tab-${tabName}`).classList.remove('hidden');
-    if(tabName === 'newsfeed') loadNewsfeed();
+    const targetTab = document.getElementById(`tab-${tabName}`);
+    if (targetTab) targetTab.classList.remove('hidden');
+    
+    // Ngắt realtime chat riêng nếu rời khỏi phòng chat riêng
+    if (tabName !== 'dm-chat' && dmSubscription) {
+        dmSubscription.unsubscribe();
+        dmSubscription = null;
+    }
+
+    // Chỉ load dữ liệu khi người dùng chủ động click menu tương ứng
+    if (tabName === 'newsfeed') loadNewsfeed();
+    if (tabName === 'profile') loadProfileData();
 }
 
-// MODULE 1: NEWSFEED & BÀI VIẾT (ĐÃ TỐI ƯU CHỐNG LAG + THÊM ĐĂNG ẢNH)
+// MODULE 1: BẢNG TIN & ĐĂNG ẢNH CHUẨN XÁC
 async function createNewPost() {
     const content = document.getElementById('post-content').value;
-    const imageFile = document.getElementById('post-image-input').files[0];
+    const imageInput = document.getElementById('post-image-input');
+    const imageFile = imageInput.files[0];
     
-    if(!content.trim() && !imageFile) return alert("Nội dung bài viết hoặc hình ảnh không được để trống!");
+    if(!content.trim() && !imageFile) return alert("Vui lòng nhập chữ hoặc chọn một bức ảnh!");
 
     let imageUrl = null;
 
-    // Nếu người dùng có chọn ảnh, tiến hành upload lên Supabase Storage trước
     if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const filePath = `${currentUser.id}/${fileName}`;
-
+        const fileName = `${currentUser.id}_${Date.now()}.${fileExt}`;
+        
+        // Đẩy ảnh lên Storage
         const { error: uploadError } = await spClient.storage
             .from('post-images')
-            .upload(filePath, imageFile);
+            .upload(fileName, imageFile);
 
-        if (uploadError) {
-            return alert("Lỗi tải ảnh lên: " + uploadError.message);
-        }
+        if (uploadError) return alert("Không tải được ảnh: " + uploadError.message);
 
-        // Lấy URL công khai của ảnh vừa upload
-        const { data } = spClient.storage.from('post-images').getPublicUrl(filePath);
+        // Lấy link Public chuẩn
+        const { data } = spClient.storage.from('post-images').getPublicUrl(fileName);
         imageUrl = data.publicUrl;
     }
 
-    // Chèn dữ liệu bài viết vào bảng posts (Lưu ý: Bảng posts của bạn cần có thêm cột image_url kiểu text)
     const { error } = await spClient.from('posts').insert([
         { user_id: currentUser.id, content: content, image_url: imageUrl }
     ]);
@@ -86,31 +95,23 @@ async function createNewPost() {
     if (error) alert(error.message);
     else {
         document.getElementById('post-content').value = '';
-        document.getElementById('post-image-input').value = ''; // Reset input chọn file
-        loadNewsfeed();
+        imageInput.value = '';
+        loadNewsfeed(); // Tự động cập nhật bảng tin ngay khi đăng bài thành công
     }
 }
 
-async function loadNewsfeed() {
-    // KỸ THUẬT GỘP REQUEST: Tải bài viết, thông tin người đăng, danh sách comment và đếm lượt like TRONG CÙNG 1 LẦN GỌI
-    const { data: posts, error } = await spClient
-        .from('posts')
-        .select(`
-            id, content, created_at, user_id, image_url,
-            profiles(full_name, avatar_url),
-            comments(id, content, user_id, profiles(full_name)),
-            likes(user_id)
-        `)
-        .order('created_at', { ascending: false });
+// HÀM CHUNG ĐỂ HIỂN THỊ DANH SÁCH BÀI VIẾT (DÙNG CHUNG CHO BẢNG TIN VÀ TƯỜNG CÁ NHÂN)
+function renderPostList(posts, containerId) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
 
-    if (error) return;
-    
-    const feedContainer = document.getElementById('newsfeed-list');
-    feedContainer.innerHTML = '';
+    if (!posts || posts.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:#999; padding:20px;">Chưa có bài viết nào ở đây.</p>';
+        return;
+    }
 
     posts.forEach(post => {
         const likeCount = post.likes ? post.likes.length : 0;
-        
         let commentHtml = '';
         if (post.comments) {
             post.comments.forEach(c => {
@@ -118,37 +119,47 @@ async function loadNewsfeed() {
             });
         }
 
-        // Kiểm tra xem bài viết có kèm hình ảnh hay không để hiển thị thẻ hiển thị ảnh
-        let imageHtml = post.image_url ? `<div class="post-image" style="margin-top:10px;"><img src="${post.image_url}" style="max-width:100%; border-radius:8px; max-height:400px; object-fit:cover;"></div>` : '';
+        // Tạo thẻ hiển thị hình ảnh nếu có image_url
+        let imageHtml = post.image_url ? `<div style="margin-top:12px; text-align:center;"><img src="${post.image_url}" style="max-width:100%; border-radius:8px; max-height:350px; object-fit:contain; border: 1px solid #eee;"></div>` : '';
 
         const postCard = document.createElement('div');
         postCard.className = 'card post-card';
         postCard.innerHTML = `
-            <div class="post-header">
-                <img src="${post.profiles?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80'}">
+            <div class="post-header" style="display:flex; gap:10px; align-items:center; cursor:pointer;" onclick="visitUserProfile('${post.user_id}')">
+                <img src="${post.profiles?.avatar_url || DEFAULT_AVATAR}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
                 <div class="post-meta">
-                    <h4>${post.profiles?.full_name || 'Đồng nghiệp'}</h4>
-                    <span>${new Date(post.created_at).toLocaleString('vi-VN')}</span>
+                    <h4 style="margin:0; color:#007bff;">${post.profiles?.full_name || 'Đồng nghiệp'}</h4>
+                    <span style="font-size:12px; color:#999;">${new Date(post.created_at).toLocaleString('vi-VN')}</span>
                 </div>
             </div>
-            <div class="post-body">
-                <p>${post.content}</p>
+            <div class="post-body" style="margin-top:10px;">
+                <p style="margin:0; white-space: pre-wrap;">${post.content}</p>
                 ${imageHtml}
             </div>
-            <div class="post-actions">
-                <button onclick="likePost('${post.id}')">❤️ Thích (${likeCount})</button>
-                <button onclick="deletePost('${post.id}', '${post.user_id}')">🗑️ Xóa bài</button>
+            <div class="post-actions" style="margin-top:15px; display:flex; gap:10px;">
+                <button onclick="likePost('${post.id}')" style="padding:5px 10px;">❤️ Thích (${likeCount})</button>
+                <button onclick="deletePost('${post.id}', '${post.user_id}')" style="padding:5px 10px;">🗑️ Xóa</button>
             </div>
-            <div class="comment-section">
+            <div class="comment-section" style="margin-top:15px; background:#f9f9f9; padding:10px; border-radius:5px;">
                 <div class="comments-list">${commentHtml}</div>
-                <div class="comment-input-group">
-                    <input type="text" id="input-cmt-${post.id}" placeholder="Viết bình luận...">
-                    <button onclick="sendComment('${post.id}')">Gửi</button>
+                <div class="comment-input-group" style="display:flex; gap:5px; margin-top:10px;">
+                    <input type="text" id="input-cmt-${post.id}" placeholder="Viết bình luận..." style="flex:1; padding:5px;">
+                    <button onclick="sendComment('${post.id}')" style="padding:5px 10px;">Gửi</button>
                 </div>
             </div>
         `;
-        feedContainer.appendChild(postCard);
+        container.appendChild(postCard);
     });
+}
+
+async function loadNewsfeed() {
+    // Kỹ thuật gộp luồng: lấy bài viết kèm ảnh, avatar, comment chỉ trong 1 request giúp chống lag
+    const { data: posts, error } = await spClient
+        .from('posts')
+        .select(`id, content, created_at, user_id, image_url, profiles(full_name, avatar_url), comments(id, content, user_id, profiles(full_name)), likes(user_id)`)
+        .order('created_at', { ascending: false });
+
+    if (!error) renderPostList(posts, 'newsfeed-list');
 }
 
 async function likePost(postId) {
@@ -157,8 +168,8 @@ async function likePost(postId) {
 }
 
 async function deletePost(postId, postOwnerId) {
-    if(currentUser.id !== postOwnerId) return alert("Bạn không có quyền xóa bài viết của người khác!");
-    if(confirm("Bạn chắc chắn muốn xóa bài viết này?")) {
+    if(currentUser.id !== postOwnerId) return alert("Bạn chỉ có quyền xóa bài viết của chính mình!");
+    if(confirm("Xóa bài viết này?")) {
         await spClient.from('posts').delete().eq('id', postId);
         loadNewsfeed();
     }
@@ -172,7 +183,112 @@ async function sendComment(postId) {
     loadNewsfeed();
 }
 
-// MODULE 2: CHAT REALTIME TOÀN CÔNG TY
+// MODULE 2: GHÉ THĂM TƯỜNG CÁ NHÂN NGƯỜI KHÁC & FOLLOW
+async function visitUserProfile(userId) {
+    if(userId === currentUser.id) {
+        switchTab('profile');
+        return;
+    }
+    selectedUserId = userId;
+    switchTab('view-profile');
+
+    // 1. Lấy thông tin cá nhân của người đó
+    const { data: prof } = await spClient.from('profiles').select('*').eq('id', userId).single();
+    if(prof) {
+        document.getElementById('view-prof-avatar').src = prof.avatar_url || DEFAULT_AVATAR;
+        document.getElementById('view-prof-name').innerText = prof.full_name || 'Đồng nghiệp';
+        document.getElementById('view-prof-status').innerText = prof.status ? `Status: ${prof.status}` : '';
+        document.getElementById('view-prof-bio').innerText = prof.bio || 'Chưa viết tiểu sử.';
+    }
+
+    // 2. Kiểm tra trạng thái đã Follow hay chưa để đổi chữ trên nút bấm
+    const { data: followCheck } = await spClient.from('follows').select('*').eq('follower_id', currentUser.id).eq('following_id', userId);
+    const btnFollow = document.getElementById('btn-follow');
+    if (followCheck && followCheck.length > 0) {
+        btnFollow.innerText = "🔕 Hủy Theo Dõi";
+        btnFollow.style.backgroundColor = "#dc3545";
+        btnFollow.style.color = "white";
+    } else {
+        btnFollow.innerText = "🔔 Theo Dõi";
+        btnFollow.style.backgroundColor = "#007bff";
+        btnFollow.style.color = "white";
+    }
+
+    // 3. Tải riêng các bài viết do người này đăng
+    const { data: userPosts } = await spClient
+        .from('posts')
+        .select(`id, content, created_at, user_id, image_url, profiles(full_name, avatar_url), comments(id, content, user_id, profiles(full_name)), likes(user_id)`)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+        
+    renderPostList(userPosts, 'user-posts-list');
+}
+
+async function toggleFollow() {
+    const btnFollow = document.getElementById('btn-follow');
+    if(btnFollow.innerText.includes("Theo Dõi") && !btnFollow.innerText.includes("Hủy")) {
+        await spClient.from('follows').insert([{ follower_id: currentUser.id, following_id: selectedUserId }]);
+    } else {
+        await spClient.from('follows').delete().eq('follower_id', currentUser.id).eq('following_id', selectedUserId);
+    }
+    visitUserProfile(selectedUserId); // Khởi tạo lại trạng thái giao diện tường nhà
+}
+
+// MODULE 3: CHAT RIÊNG BIỆT 1 - 1 (DIRECT MESSAGE)
+async function openDirectMessage() {
+    switchTab('dm-chat');
+    const { data: prof } = await spClient.from('profiles').select('full_name').eq('id', selectedUserId).single();
+    document.getElementById('dm-target-name').innerText = `🔒 Chat riêng với: ${prof?.full_name || 'Đồng nghiệp'}`;
+    
+    loadPrivateMessages();
+
+    // Thiết lập cổng lắng nghe Realtime riêng biệt cho 2 người, không ảnh hưởng chat tổng toàn công ty
+    dmSubscription = spClient.channel(`room:${currentUser.id}-${selectedUserId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, payload => {
+        loadPrivateMessages();
+    })
+    .subscribe();
+}
+
+async function loadPrivateMessages() {
+    // Lấy tin nhắn giữa người A gửi người B hoặc người B gửi người A
+    const { data: messages } = await spClient
+        .from('private_messages')
+        .select('*')
+        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${selectedUserId}),and(sender_id.eq.${selectedUserId},receiver_id.eq.${currentUser.id})`)
+        .order('created_at', { ascending: true });
+
+    const chatBox = document.getElementById('dm-messages');
+    chatBox.innerHTML = '';
+
+    if(messages) {
+        messages.forEach(m => {
+            const isMine = m.sender_id === currentUser.id;
+            const bubble = document.createElement('div');
+            bubble.style.textAlign = isMine ? 'right' : 'left';
+            bubble.innerHTML = `
+                <div style="display:inline-block; background:${isMine ? '#d4edda' : '#eee'}; padding:8px 12px; margin:5px; border-radius:10px; max-width:70%;">
+                    ${m.content}
+                </div>
+            `;
+            chatBox.appendChild(bubble);
+        });
+    }
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+async function sendPrivateMessage() {
+    const input = document.getElementById('dm-input');
+    if(!input.value.trim()) return;
+
+    await spClient.from('private_messages').insert([
+        { sender_id: currentUser.id, receiver_id: selectedUserId, content: input.value }
+    ]);
+    input.value = '';
+    loadPrivateMessages();
+}
+
+// MODULE 4: PHÒNG CHAT CHUNG REALTIME TOÀN CÔNG TY
 async function sendChatMessage() {
     const input = document.getElementById('chat-input');
     if(!input.value.trim()) return;
@@ -223,11 +339,11 @@ async function recallMessage(msgId) {
     await spClient.from('messages').update({ is_recalled: true }).eq('id', msgId);
 }
 
-// MODULE 3: TRANG CÁ NHÂN
+// MODULE 5: TRANG CÁ NHÂN CHÍNH CHỦ
 async function loadProfileData() {
     const { data: prof } = await spClient.from('profiles').select('*').eq('id', currentUser.id).single();
     if(prof) {
-        document.getElementById('prof-avatar').src = prof.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&h=80';
+        document.getElementById('prof-avatar').src = prof.avatar_url || DEFAULT_AVATAR;
         document.getElementById('prof-name').innerText = prof.full_name;
         document.getElementById('prof-status-input').value = prof.status || '';
         document.getElementById('prof-bio-input').value = prof.bio || '';
@@ -237,7 +353,6 @@ async function loadProfileData() {
 async function updateProfile() {
     const status = document.getElementById('prof-status-input').value;
     const bio = document.getElementById('prof-bio-input').value;
-    
     await spClient.from('profiles').update({ status, bio }).eq('id', currentUser.id);
-    alert("Cập nhật trang cá nhân thành công!");
+    alert("Cập nhật thành công!");
 }

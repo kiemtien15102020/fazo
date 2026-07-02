@@ -1,8 +1,12 @@
-// CẤU HÌNH KẾT NỐI SUPABASE (Đã đổi tên thành spClient để tránh trùng lặp)
+// CẤU HÌNH KẾT NỐI SUPABASE
 const SUPABASE_URL = "https://nbciwifubobjohwmdjwg.supabase.co"; 
 const SUPABASE_ANON_KEY = "sb_publishable_-a4LSSVo-va31CIo7P5z4A_rMbL1tNj";
-const spClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Trích xuất hàm createClient từ đối tượng thư viện toàn cục của CDN
+const { createClient } = supabase; 
+
+// Khởi tạo kết nối và giữ nguyên tên biến là 'supabase' để đồng bộ với toàn bộ code phía dưới
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
 // KHỞI CHẠY KIỂM TRA ĐĂNG NHẬP

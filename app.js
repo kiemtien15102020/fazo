@@ -5,8 +5,8 @@ const SUPABASE_ANON_KEY = "sb_publishable_-a4LSSVo-va31CIo7P5z4A_rMbL1tNj";
 // Trích xuất hàm createClient từ đối tượng thư viện toàn cục của CDN
 const { createClient } = supabase; 
 
-// Khởi tạo kết nối và giữ nguyên tên biến là 'supabase' để đồng bộ với toàn bộ code phía dưới
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Khởi tạo kết nối bằng biến spClient để đồng bộ với toàn bộ code xử lý phía dưới
+const spClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
 // KHỞI CHẠY KIỂM TRA ĐĂNG NHẬP
@@ -143,7 +143,7 @@ async function sendChatMessage() {
 function listenRealtimeChat() {
     loadChatMessages();
 
-    // Hủy đăng ký kênh cũ để tránh trùng lặp
+    // Hủy đăng ký kênh cũ để tránh trùng lặp bộ nhớ
     spClient.channel('public:messages').unsubscribe();
 
     spClient.channel('public:messages')
